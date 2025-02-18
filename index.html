@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Crafter - AI-Powered Quiz Platform</title>
+    <style>
+        /* ... existing code ... */
+        
+        /* Enhanced header styles */
+        .header {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            transition: transform 0.3s ease;
+        }
+        
+        .header:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        /* Topic input section */
+        .topic-section {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .topic-section input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            flex: 1;
+        }
+
+        /* Timer and progress styles */
+        .quiz-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .timer {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #dc3545;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress {
+            width: 0%;
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .quiz-info {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .progress-bar {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Quiz Crafter</h1>
+            <p>AI-Powered Quiz Generation Platform</p>
+        </div>
+
+        <div class="topic-section">
+            <input type="text" id="topic-input" placeholder="Enter your topic (e.g., 'World War II', 'Python Programming')">
+            <button onclick="generateQuiz()">Generate Quiz</button>
+        </div>
+
+        <div class="quiz-section" style="display: none;">
+            <div class="quiz-info">
+                <div class="timer">Time: <span id="time">15:00</span></div>
+                <div>
+                    <span>Progress: <span id="progress-text">0/10</span></span>
+                    <div class="progress-bar">
+                        <div class="progress" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="questions-container">
+                <!-- Questions will be dynamically inserted here -->
+            </div>
+
+            <button onclick="submitQuiz()">Submit Quiz</button>
+        </div>
+    </div>
+<!-- ... existing HTML and CSS ... -->
+
+    <script>
+    let timer;
+    let timeLeft = 900;
+    let currentQuestion = 0;
+    let totalQuestions = 10;
+    let questions = [];
+    let score = 0;
+
+    async function generateQuiz() {
+        const topic = document.getElementById('topic-input').value;
+        if (!topic) {
+            alert('Please enter a topic');
+            return;
+        }
+
+        // Show loading state
+        document.querySelector('.quiz-section').style.display = 'block';
+        document.getElementById('questions-container').innerHTML = 
+            '<div class="loading">Generating questions using AI...</div>';
+
+        try {
+            const response = await fetch('http://localhost:3000/generate-questions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ topic })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to generate questions');
+            }
+
+            const data = await response.json();
+            questions = data.questions;
+            displayQuestions();
+            startTimer();
+            updateProgress();
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('questions-container').innerHTML = 
+                '<div class="error">Failed to generate questions. Please try again.</div>';
+        }
+    }
+
+    function displayQuestions() {
+        const questionsContainer = document.getElementById('questions-container');
+        questionsContainer.innerHTML = '';
+
+        questions.forEach((q, index) => {
+            const questionHtml = `
+                <div class="question" data-question="${index}">
+                    <h3>Question ${index + 1}:</h3>
+                    <p>${q.question}</p>
+                    <div class="options">
+                        ${q.options.map((option, i) => `
+                            <div class="option" data-index="${i}" onclick="selectOption(this, ${index})">
+                                ${['A', 'B', 'C', 'D'][i]}) ${option}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            questionsContainer.innerHTML += questionHtml;
+        });
+    }
+
+    function selectOption(option, questionIndex) {
+        const questionDiv = option.closest('.question');
+        const options = questionDiv.querySelectorAll('.option');
+        
+        // Remove selection from other options
+        options.forEach(opt => opt.classList.remove('selected'));
+        
+        // Add selection to clicked option
+        option.classList.add('selected');
+        
+        // Update progress only if this question wasn't answered before
+        if (!questionDiv.dataset.answered) {
+            currentQuestion++;
+            updateProgress();
+            questionDiv.dataset.answered = 'true';
+        }
+    }
+
+    function submitQuiz() {
+        clearInterval(timer);
+        score = 0;
+
+        questions.forEach((q, index) => {
+            const questionDiv = document.querySelector(`.question[data-question="${index}"]`);
+            const selectedOption = questionDiv.querySelector('.option.selected');
+            
+            if (selectedOption) {
+                const selectedIndex = parseInt(selectedOption.dataset.index);
+                if (selectedIndex === q.correctAnswer) {
+                    score++;
+                    selectedOption.style.backgroundColor = '#90EE90'; // Light green
+                } else {
+                    selectedOption.style.backgroundColor = '#FFB6C1'; // Light red
+                    // Highlight correct answer
+                    questionDiv.querySelectorAll('.option')[q.correctAnswer].style.backgroundColor = '#90EE90';
+                }
+            }
+        });
+
+        alert(`Quiz completed! Your score: ${score}/${totalQuestions}`);
+    }
+
+    // ... existing timer and progress functions ...
+    </script>
+    <script>
+        let timer;
+        let timeLeft = 900; // 15 minutes in seconds
+        let currentQuestion = 0;
+        const totalQuestions = 10;
+
+        function generateQuiz() {
+            const topic = document.getElementById('topic-input').value;
+            if (!topic) {
+                alert('Please enter a topic');
+                return;
+            }
+
+            // Show loading state
+            document.querySelector('.quiz-section').style.display = 'block';
+            document.getElementById('questions-container').innerHTML = 'Generating questions...';
+
+            // In a real application, this would make an API call to an AI service
+            // For demo, we'll simulate AI-generated questions
+            setTimeout(() => {
+                generateDemoQuestions(topic);
+                startTimer();
+                updateProgress();
+            }, 1500);
+        }
+
+        function generateDemoQuestions(topic) {
+            const questionsContainer = document.getElementById('questions-container');
+            questionsContainer.innerHTML = ''; // Clear loading message
+
+            // Demo questions (in real app, these would be AI-generated)
+            for (let i = 1; i <= totalQuestions; i++) {
+                const questionHtml = `
+                    <div class="question">
+                        <h3>Question ${i}:</h3>
+                        <p>Sample question about ${topic} (AI-generated)</p>
+                        <div class="options">
+                            <div class="option" onclick="selectOption(this)">A) Option 1</div>
+                            <div class="option" onclick="selectOption(this)">B) Option 2</div>
+                            <div class="option" onclick="selectOption(this)">C) Option 3</div>
+                            <div class="option" onclick="selectOption(this)">D) Option 4</div>
+                        </div>
+                    </div>
+                `;
+                questionsContainer.innerHTML += questionHtml;
+            }
+        }
+
+        function startTimer() {
+            clearInterval(timer);
+            timer = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById('time').textContent = 
+                    `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    submitQuiz();
+                }
+            }, 1000);
+        }
+
+        function selectOption(option) {
+            // Remove selected class from all options in the same question
+            const options = option.parentElement.children;
+            Array.from(options).forEach(opt => opt.style.backgroundColor = '#e9ecef');
+            
+            // Highlight selected option
+            option.style.backgroundColor = '#b8daff';
+            currentQuestion++;
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const progress = Math.min(currentQuestion, totalQuestions);
+            document.getElementById('progress-text').textContent = `${progress}/${totalQuestions}`;
+            document.getElementById('progress-bar').style.width = `${(progress/totalQuestions) * 100}%`;
+        }
+
+        function submitQuiz() {
+            clearInterval(timer);
+            alert('Quiz submitted! In a real application, this would calculate and show your score.');
+        }
+    </script>
+    
+</body>
+</html>
